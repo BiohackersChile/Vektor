@@ -1,45 +1,18 @@
 #include <Arduino.h>
 #include <limits.h>
-/***************************************************************************
-  This is a library example for the HMC5883 magnentometer/compass
-
-  Designed specifically to work with the Adafruit HMC5883 Breakout
-  http://www.adafruit.com/products/1746
-
-  *** You will also need to install the Adafruit_Sensor library! ***
-
-  These displays use I2C to communicate, 2 pins are required to interface.
-
-  Adafruit invests time and resources providing this open source code,
-  please support Adafruit andopen-source hardware by purchasing products
-  from Adafruit!
-
-  Written by Kevin Townsend for Adafruit Industries with some heading example from
-  Love Electronics (loveelectronics.co.uk)
-
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the version 3 GNU General Public License as
-  published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
- ***************************************************************************/
-
-//pines PWM analogicos: 3 5 6 9 10 11
-//delayMicroseconds()
-
 #include <Wire.h>
 #include <DigitalAnalog.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
 
 #include <math.h>
+
+/**
+  For adafruit magsensor:
+  http://www.adafruit.com/products/1746
+*/
+/* Assign a unique ID to this sensor at the same time */
+Adafruit_HMC5883_Unified mag = Adafruit_HMC5883_Unified(12345);
 
 //////////////////////////////////////////////////////////////////////
 ////////////Mat functions
@@ -84,8 +57,17 @@ void mat_mult_vec(float* mat, float* vi, float* vo) {
 }
 
 /** gets the current manetometer direction */
-void mag_dir(float* v) {
+void mag_dir(float vo[3]) {
+  sensors_event_t event;
+  mag.getEvent(&event);
 
+  vo[0] = event.magnetic.x;
+  vo[1] = event.magnetic.y;
+  vo[2] = 0; //event.magnetic.z;
+  /*
+  Serial.println("mag dir  x "+String(event.magnetic.x)+
+    " y: "+String(event.magnetic.y) );
+    */
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -116,13 +98,13 @@ int engines_num=4;
 //angle of the first engine relative to global coordinates
 float engines_ang_offset=0;
 //width of vibration wave, it will be linearly interpolated later
-float engines_ang_width = (M_PI*0.75f)/2;
+float engines_ang_width = (M_PI*0.75f)/2.0f;
 //////////////////////////////////////////////////////////////////////
 
 //engines step, calculated angle space between engines
 float engines_ang_step;
 int * engines;  //voltaje from 0 to 255 for each engine
-int * engines_map;  //a mapping: engines_map[engine] = pin (see engines_apply)
+int engines_map[4];  //a mapping: engines_map[engine] = pin (see engines_apply)
 float engines_transform[9];  //coordinates transformation matrix
 
 //those temporary vector and matrix data, let you optimize calculation
@@ -131,17 +113,21 @@ float engines_transform[9];  //coordinates transformation matrix
 float tmp_mag_dir[3];
 float tmp_v0[3];
 float tmp_v1[3];
-
 /**
 @desc setups engines data structures and variables
 @param  engines_mapping the mapping from engines to pins:
     {engine_0_pin, engine_1_pin[, ..]}
 */
-void engines_setup(int* engines_mapping) {
+void engines_setup(int engines_mapping[4]) {
   engines = new int[engines_num];
-  engines_map = engines_mapping;
-  create_transform(engines_transform, mag_vx, mag_vy, mag_vz);
+  engines_map[0] = engines_mapping[0];
+  engines_map[1] = engines_mapping[1];
+  engines_map[2] = engines_mapping[2];
+  engines_map[3] = engines_mapping[3];
 
+  //Serial.println( "Starting!:"+engines_mapping[0] );
+
+  create_transform(engines_transform, mag_vx, mag_vy, mag_vz);
   engines_ang_step = 2*M_PI/engines_num;
 }
 
@@ -151,9 +137,11 @@ void engines_setup(int* engines_mapping) {
 */
 void engines_apply() {
   int i, pin =0;
+
+
   for(i=0;i < engines_num; i++) {
     pin = engines_map[i];
-    digitalWrite( pin, engines[i] );
+    analogWrite( pin, engines[i] );
   }
 }
 /**
@@ -171,15 +159,19 @@ void engines_update_direction() {
   //loop variables:
   int i;
   //magetometer angle
-  float ang_mag = atan(double(tmp_mag_dir[1]/tmp_mag_dir[0]));//get flatten angle only
+  float ang_mag = M_PI+ atan2(tmp_mag_dir[1], tmp_mag_dir[0]);//get flatten angle only
   float ang_eng;    //engine angle
   float ang_diff;
   //relation between angle distance calculated from north and engine intensity
   float ang_coef = 255.0f / engines_ang_width;
 
+  Serial.println("HEADING  "+String(ang_mag));
   for(i=0; i < engines_num;i++) { //for each engine
     ang_eng = engines_ang_step*i + engines_ang_offset;  //get engine angle
     ang_diff = fabs(ang_eng - ang_mag);
+    ang_diff = min(min(fabs(ang_eng - ang_mag - M_PI*2), fabs(ang_eng - ang_mag) ),
+      fabs(ang_eng - ang_mag + M_PI*2)) ;
+
 
     if(ang_diff > engines_ang_width)  //if engine angle scapes vibration width
       engines[i] = 0; //turn off
@@ -197,8 +189,6 @@ void engines_update_direction() {
 //////////////////////////////////////////////////////////////////////
 ////////////Main program logic
 //////////////////////////////////////////////////////////////////////
-/* Assign a unique ID to this sensor at the same time */
-Adafruit_HMC5883_Unified mag = Adafruit_HMC5883_Unified(12345);
 
 void displaySensorDetails(void) {
   sensor_t sensor;
@@ -216,77 +206,38 @@ void displaySensorDetails(void) {
 }
 
 void setup(void) {
-  //digital_analog_setup();
+  int mapping[4] = {3,9,6,5};
+  engines_setup(mapping);
 
-  pinMode(2, OUTPUT);
 
   pinMode(3, OUTPUT);
-
   pinMode(5, OUTPUT);
   pinMode(6, OUTPUT);
-
   pinMode(9, OUTPUT);
-  pinMode(10, OUTPUT);
-  pinMode(11, OUTPUT);
-  pinMode(13, OUTPUT);
 
-  digitalWrite(5, LOW);
+  Serial.begin(9600);
 
-    Serial.begin(9600);
-    Serial.println("HMC5883 Magnetometer Test"); Serial.println("");
+  Serial.println("mapping "+String(engines_map[0]));
+  Serial.println("mapping "+String(engines_map[1]));
+  Serial.println("mapping "+String(engines_map[2]));
+  Serial.println("mapping "+String(engines_map[3]));
 
-    /* Initialise the sensor */
-    if (!mag.begin()) {
-      /* There was a problem detecting the HMC5883 ... check your connections */
-      Serial.println("Ooops, no HMC5883 detected ... Check your wiring!");
-      while (1);
-    }
+  Serial.println("HMC5883 Magnetometer Test"); Serial.println("");
 
-    /* Display some basic information on this sensor */
-    displaySensorDetails();
-}
-
-void loop_frame(void) {
-  // Get a new sensor event
-  sensors_event_t event;
-
-  // Display the results (magnetic vector values are in micro-Tesla (uT))
-  Serial.print("X: "); Serial.print(event.magnetic.x); Serial.print("  ");
-  Serial.print("Y: "); Serial.print(event.magnetic.y); Serial.print("  ");
-  Serial.print("Z: "); Serial.print(event.magnetic.z); Serial.print("  "); Serial.println("uT");
-
-  // Hold the module so that Z is pointing 'up' and you can measure the heading with x&y
-  // Calculate heading when the magnetometer is level, then correct for signs of axis.
-  float heading = atan2(event.magnetic.y, event.magnetic.x);
-
-  // Once you have your heading, you must then add your 'Declination Angle',
-  //which is the 'Error' of the magnetic field in your location.
-  // Find yours here: http://www.magnetic-declination.com/
-  // Mine is: -13* 2' W, which is ~13 Degrees, or (which we need) 0.22 radians
-  // If you cannot find your Declination, comment ouut these two lines, your
-  //compass will be slightly off.
-  float declinationAngle = 0.22;
-  heading += declinationAngle;
-
-  // Correct for when signs are reversed.u
-  if (heading < 0)
-    heading += 2 * PI;
-
-  // Check for wrap due to addition of declination.usb
-  if (heading > 2 * PI)
-    heading -= 2 * PI;
-
-  // Convert radians to degrees for readability.
-  float headingDegrees = heading * 180 / M_PI;
-
-  Serial.print("Heading (degrees): "); Serial.println(headingDegrees);
-  for (int i = 0; i < 25; i += 1) {
-    delay(50);
+  /* Initialise the sensor */
+  if (!mag.begin()) {
+    /* There was a problem detecting the HMC5883 ... check your connections */
+    Serial.println("Ooops, no HMC5883 detected ... Check your wiring!");
+    while (1);
   }
+
+  /* Display some basic information on this sensor */
+  displaySensorDetails();
 }
 
-void (*f)(void) = &loop_frame;
 
 void loop(void) {
-  loop_frame();
+  engines_update_direction();
+
+  delay(10);
 }
