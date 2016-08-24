@@ -1,60 +1,22 @@
+#include <math.h>
 #include <Arduino.h>
 #include <limits.h>
 #include <Wire.h>
-#include <DigitalAnalog.h>
+
+//if you use arduino ide, take those into your libraries folder
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
 
-#include <math.h>
-
+//local sketch extra code
+#include "digitalx.h"
+#include "threader.h"
+#include "vektor_mat.h"
 /**
   For adafruit magsensor:
   http://www.adafruit.com/products/1746
 */
 /* Assign a unique ID to this sensor at the same time */
 Adafruit_HMC5883_Unified mag = Adafruit_HMC5883_Unified(12345);
-
-//////////////////////////////////////////////////////////////////////
-////////////Mat functions
-//////////////////////////////////////////////////////////////////////
-/** creates a new empty vector */
-float * create_vec() {
-  float vec[3] = {0.0f ,0.0f ,0.0f};
-  return vec;
-}
-
-/** vi = vi/mod(vi) */
-void normalize(float * vi) {
-  float l =  sqrt( double(vi[0]*vi[0] + vi[1]*vi[1] + vi[2]*vi[2]) );
-  vi[0] /= l;
-  vi[1] /= l;
-  vi[2] /= l;
-}
-
-/** makes  mat = (vx, vy, vz)
-  wich represents a tranformation from coordinates relative to vx,y,z to
-  the ones on wich they are defined
-*/
-void create_transform(float* mat,float* vx, float* vy, float* vz) {
-  mat[0] = vx[0];
-  mat[1] = vx[1];
-  mat[2] = vx[2];
-
-  mat[3] = vy[0];
-  mat[4] = vy[1];
-  mat[5] = vy[2];
-
-  mat[6] = vz[0];
-  mat[7] = vz[1];
-  mat[8] = vz[2];
-}
-
-/** makes vo = mat*vi */
-void mat_mult_vec(float* mat, float* vi, float* vo) {
-  vo[0] = vi[0]*mat[0] + vi[1]*mat[3] + vi[2]*mat[6];
-  vo[1] = vi[0]*mat[1] + vi[1]*mat[4] + vi[2]*mat[7];
-  vo[2] = vi[0]*mat[2] + vi[1]*mat[5] + vi[2]*mat[8];
-}
 
 /** gets the current manetometer direction */
 void mag_dir(float vo[3]) {
@@ -95,8 +57,9 @@ float mag_vy[3] = {-cos(M_PI/4), cos(M_PI/4), 0};
 float mag_vz[3] = {0,0, 1};
 //number of engines, equally distributed in circle
 int engines_num=4;
-//angle of the first engine relative to global coordinates
-float engines_ang_offset=0;
+//angle of the first engine relative to global coordinates, or just
+//your geolocal phase relative to north pole
+float engines_ang_offset=-M_PI/2;
 //width of vibration wave, it will be linearly interpolated later
 float engines_ang_width = (M_PI*0.75f)/2.0f;
 //////////////////////////////////////////////////////////////////////
@@ -136,13 +99,8 @@ void engines_setup(int engines_mapping[4]) {
     supports native pwm enabled pins
 */
 void engines_apply() {
-  int i, pin =0;
-
-
-  for(i=0;i < engines_num; i++) {
-    pin = engines_map[i];
-    analogWrite( pin, engines[i] );
-  }
+  for(int i =0; i < engines_num; i++)
+    analogWrite( engines_map[i], engines[i] );
 }
 /**
 This gets the magnetometter direction, transforms it to local cordinates
@@ -156,18 +114,19 @@ void engines_update_direction() {
   //transform coordinates
   mat_mult_vec(engines_transform, tmp_mag_dir, tmp_v0);
 
-  //loop variables:
-  int i;
-  //magetometer angle
-  float ang_mag = M_PI+ atan2(tmp_mag_dir[1], tmp_mag_dir[0]);//get flatten angle only
+  //local magetometer angle
+  float ang_mag = M_PI+ atan2(tmp_v0[1], tmp_v0[0]);//get flatten angle only
+  //Serial.print("current angle ");
+  //Serial.println(ang_mag);
+
   float ang_eng;    //engine angle
   float ang_diff;
   //relation between angle distance calculated from north and engine intensity
   float ang_coef = 255.0f / engines_ang_width;
 
-  for(i=0; i < engines_num;i++) { //for each engine
-    ang_eng = engines_ang_step*i + engines_ang_offset;  //get engine angle
-    ang_diff = fabs(ang_eng - ang_mag);
+  for(int i=0; i < engines_num;i++) { //for each engine
+    ang_eng = engines_ang_step*i + engines_ang_offset;  //get local engine angle
+    //get engine distance from local magnetometer angle
     ang_diff = min(min(fabs(ang_eng - ang_mag - M_PI*2), fabs(ang_eng - ang_mag) ),
       fabs(ang_eng - ang_mag + M_PI*2)) ;
 
@@ -181,8 +140,6 @@ void engines_update_direction() {
 
   engines_apply();
 }
-
-
 
 
 //////////////////////////////////////////////////////////////////////
@@ -204,22 +161,31 @@ void displaySensorDetails(void) {
   delay(500);
 }
 
+unsigned long count = 0;
+bool level = true;
+void print(unsigned long dt) {
+  Serial.println("-----------------------------------------runing thread");
+  Serial.println(count);
+  level = !level;
+  analogWrite(5, (level)?255:10);
+  analogXWrite(8, (level)?255:10);
+  analogXUpdate(dt, true);
+
+}
+void update_data(unsigned long dt) {
+  analogXUpdate(dt, false);
+  count++;
+}
+
 void setup(void) {
   int mapping[4] = {3,9,6,5};
   engines_setup(mapping);
-
-
   pinMode(3, OUTPUT);
   pinMode(5, OUTPUT);
   pinMode(6, OUTPUT);
   pinMode(9, OUTPUT);
 
   Serial.begin(9600);
-
-  Serial.println("mapping "+String(engines_map[0]));
-  Serial.println("mapping "+String(engines_map[1]));
-  Serial.println("mapping "+String(engines_map[2]));
-  Serial.println("mapping "+String(engines_map[3]));
 
   Serial.println("HMC5883 Magnetometer Test"); Serial.println("");
 
@@ -229,14 +195,26 @@ void setup(void) {
     Serial.println("Ooops, no HMC5883 detected ... Check your wiring!");
     while (1);
   }
-
   /* Display some basic information on this sensor */
   displaySensorDetails();
+
+  digital_analog_setup();
+
+  pinXMode(8, true);
+  analogXWrite(8, 50);
+
+  pinMode(5, OUTPUT);
+  analogWrite(5, 255);
+
+  register_thread(update_data, 0);
+  register_thread(print, 1000000);
 }
 
 
-void loop(void) {
-  engines_update_direction();
 
-  delay(10);
+void loop(void) {
+  //engines_update_direction();
+  thread_manager();
+
+  delayMicroseconds(0);
 }
