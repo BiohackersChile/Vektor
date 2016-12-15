@@ -161,6 +161,7 @@ void displaySensorDetails(void) {
   delay(500);
 }
 
+/*
 unsigned long count = 0;
 bool level = true;
 void print(unsigned long dt) {
@@ -176,14 +177,11 @@ void update_data(unsigned long dt) {
   analogXUpdate(dt, false);
   count++;
 }
+*/
 
 void setup(void) {
   int mapping[4] = {3,9,6,5};
   engines_setup(mapping);
-  pinMode(3, OUTPUT);
-  pinMode(5, OUTPUT);
-  pinMode(6, OUTPUT);
-  pinMode(9, OUTPUT);
 
   Serial.begin(9600);
 
@@ -199,17 +197,17 @@ void setup(void) {
   displaySensorDetails();
 
   digital_analog_setup();
-
+  /*
   pinXMode(8, true);
   analogXWrite(8, 50);
 
   pinMode(5, OUTPUT);
   analogWrite(5, 255);
+  */
 
-  register_thread(update_data, 0);
-  register_thread(print, 1000000);
+  // register_thread(update_data, 0);
+  //register_thread(print, 1000000);
 }
-
 
 
 void loop(void) {

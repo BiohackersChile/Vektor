@@ -24,7 +24,7 @@ bool * digitalx_mode; //if pin is to be handled
 
 
 int mapping_arduino_mini_pro[7] = {1,2,4,7,8,12,13};
-
+int mapping_arduino_uno[12] = {2,3,4,5,6,7,8,9,10,11,12,13};
 /*
 setups pins variables,
 general, pwm settings
@@ -76,7 +76,7 @@ void digital_analog_setup(int pins_length, int * pins_mapping ) {
 
 }
 void digital_analog_setup() {
-  digital_analog_setup(7, mapping_arduino_mini_pro);
+  digital_analog_setup(12, mapping_arduino_uno);
 }
 
 unsigned long flips = 0;
