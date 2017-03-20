@@ -2,7 +2,7 @@
 
 ##Arduino
 
-We recomend you to use PlatformIO, a great tool for 
+We recomend you to use PlatformIO, a great tool for
 multiplatform development on smal devices and embeded systems
 like IoT or Arduino.
 

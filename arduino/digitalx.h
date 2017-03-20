@@ -12,11 +12,22 @@ data arrays
 void digital_analog_setup(int mappings_length, int* mapping);
 void digital_analog_setup();
 
+void digital_analog_useall();
+
+/**
+Prints current pin states, and algo global config variables if config=true
+*/
+void analogXPrint(bool config=false, bool mapings=true);
+
 /*
 executed by "thread" emulator, a small delay betwen executions gives
 better results
 */
 void analogXUpdate(unsigned long dt, bool print);
+
+/**
+Updates a pin
+*/
 void analogXUpdate();
 
 /*

@@ -1,6 +1,22 @@
 #include <Arduino.h>
 #include "threader.h"
 
+/*
+holds delay data, along with the function (thead) object
+*/
+struct Thread_desc {
+  bool executing;
+  void  (*exec) (unsigned long micros);  //function to execute
+  unsigned long delay_micros;  //time between repetitions
+  unsigned long t_next;
+
+  Thread_desc( void (*exec)(unsigned long micros), unsigned long delay_micros)
+    : executing(false), exec(exec),
+      delay_micros(delay_micros), t_next(1) {}
+
+  Thread_desc() {}
+};
+
 Thread_desc * threads = new Thread_desc[10];
 int threads_len = 0;
 int threads_len_max = 10;
@@ -16,6 +32,9 @@ void register_thread( void (*exec) (unsigned long micros), unsigned long delay_m
 
 unsigned long t_last=1, t_current;
 
+/**
+Executes the threads., call it on every loop cycle
+*/
 void thread_manager() {
   //Serial.println("thread manager");
   if(t_last == 1)  t_last = micros();

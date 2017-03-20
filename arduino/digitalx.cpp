@@ -15,8 +15,8 @@ unsigned long * digitalx_td; //positive (high) time delay
 
 bool * digitalx_high; //current state of pin;
 
-int * digitalx_mapping; //from internal pin index into arduino pins
 int * digitalx_mapping_in;  //from arduino pin into internal index
+int * digitalx_mapping; //from internal pin index into arduino pins
 
 int digitalx_pinsmax; //max pins index to check from outside
 int digitalx_pins;
@@ -24,7 +24,8 @@ bool * digitalx_mode; //if pin is to be handled
 
 
 int mapping_arduino_mini_pro[7] = {1,2,4,7,8,12,13};
-int mapping_arduino_uno[12] = {2,3,4,5,6,7,8,9,10,11,12,13};
+int mapping_arduino_uno[6] = {2,4,7,8,12,13};
+
 /*
 setups pins variables,
 general, pwm settings
@@ -32,56 +33,104 @@ mappings (in, out)
 data arrays
 */
 void digital_analog_setup(int pins_length, int * pins_mapping ) {
-  /*
-  generate mappings
-    mapping_in converts from real pin onto internal index
-    holds -1 if it doesnt exists
+	/*
+	generate mappings
+	mapping_in converts from real pin onto internal index
+	holds -1 if it doesnt exists
 
-    mapping holds from internal index into real index
-  */
-  digitalx_pins = pins_length;
-  digitalx_mapping = pins_mapping;
-
-
-  //digitalx_mapping_in = int[ digitalx_mapping[digitalx_pins] ];
-  //get max pin index value
-  int i,l, max=0;
-  for(i=0, l=digitalx_pins; i<l; i++)
-    if(digitalx_mapping[i] > max) max = digitalx_mapping[i];
+	mapping holds from internal index into real index
+	*/
+	digitalx_pins = pins_length;
+	digitalx_mapping = pins_mapping;
 
 
-  digitalx_mapping_in = new int[max];
-  for(i = 0, l = max; i < l; i++) {
-    digitalx_mapping_in[i] = -1;
+	//digitalx_mapping_in = int[ digitalx_mapping[digitalx_pins] ];
+	//get max pin index value, store it in max
+	int i,l, max=0;
+	for(i=0, l=digitalx_pins; i<l; i++)
+		if(digitalx_mapping[i] > max) max = digitalx_mapping[i];
+	max++;
 
-    for(int j=0; j < digitalx_pins; j++)
-      if(digitalx_mapping[j] == i+1)
-        digitalx_mapping_in[i] = j;
-  }
 
-  digitalx_pinsmax = max;
+	digitalx_mapping_in = new int[max];
+	for(i = 0, l = max; i < l; i++) {
+		digitalx_mapping_in[i] = -1;
 
-  digitalx_t_left = new unsigned long[pins_length];
-  digitalx_td = new unsigned long[pins_length];
-  digitalx_high = new bool[pins_length];
+		for(int j=0; j < digitalx_pins; j++)
+			if(digitalx_mapping[j] == i)
+				digitalx_mapping_in[i] = j;
+	}
 
-  digitalx_mode = new bool[pins_length];
+	digitalx_pinsmax = max;
 
-  //fill empty data
-  for(i=0, l=digitalx_pins; i<l;i++) {
-    digitalx_mode[i] = false;
-    digitalx_high[i] = false;
-    digitalx_td[i] = digitalx_t_left[i] = 0;
-  }
+	digitalx_t_left = new unsigned long[digitalx_pins];
+	digitalx_td = new unsigned long[digitalx_pins];
+	digitalx_high = new bool[digitalx_pins];
+
+	digitalx_mode = new bool[digitalx_pins];
+
+	//fill empty data
+	for(i=0, l=digitalx_pins; i<l;i++) {
+		digitalx_mode[i] = false;
+		digitalx_high[i] = false;
+		digitalx_td[i] = digitalx_t_left[i] = 0;
+	}
 
 }
+
 void digital_analog_setup() {
-  digital_analog_setup(12, mapping_arduino_uno);
+  digital_analog_setup(6, mapping_arduino_uno);
+}
+
+void analogXPrint(bool config=false, bool mapings=true) {
+	if(config) {
+		Serial.println("digitalx_pins:"+String( digitalx_pins));
+		Serial.println("digitalx_pinsmax:"+String( digitalx_pinsmax));
+	}
+
+	if(mapings) {
+		Serial.println("digitalx_mapping:");
+		for(int i = 0; i<digitalx_pins; i++) {
+			Serial.print(String(i)+": "+String(digitalx_mapping[i])+", ");
+		}
+		Serial.println();
+
+		Serial.println("digitalx_mapping_in:");
+		for(int i = 0; i<digitalx_pinsmax; i++) {
+			Serial.print(String(i)+": "+String(digitalx_mapping_in[i])+", ");
+		}
+		Serial.println();
+	}
+
+	Serial.print("tleft:");
+	for(int i=0; i<digitalx_pins;i++) {
+		Serial.print(String(i)+":"+String(digitalx_t_left[i])+", ");
+	}
+	Serial.println();
+
+	Serial.print("td:");
+	for(int i=0; i<digitalx_pins;i++) {
+		Serial.print(String(i)+":"+String(digitalx_td[i])+", ");
+	}
+	Serial.println();
+
+	Serial.print("pin_high:");
+	for(int i=0; i<digitalx_pins;i++) {
+		Serial.print(String(i)+":"+String(digitalx_high[i])+", ");
+	}
+	Serial.println();
+
+	Serial.print("pinmode:");
+	for(int i=0; i<digitalx_pins;i++) {
+		Serial.print(String(i)+":"+String(digitalx_mode[i])+", ");
+	}
+	Serial.println();
+
 }
 
 unsigned long flips = 0;
 /*
-executed by "thread" emulator, a small delay betwen executions gives
+executed by "thread" emulator, smaller delays betwen executions gives
 better results
 */
 void analogXUpdate(unsigned long dt, bool print) {
@@ -144,7 +193,9 @@ void analogXUpdate(unsigned long dt, bool print) {
           if(print)
             Serial.println("pre pin_tl "+String(digitalx_t_left[pin])+
               " tl "+String(t_left) );
+
           digitalx_t_left[pin] =  t_left;
+
           if(print)
           Serial.println("Post pin_tl: "+String(digitalx_t_left[pin])+
             " state "+String(digitalx_high[pin]));
@@ -169,28 +220,44 @@ void analogXUpdate(void) {
 enable, disable pin
 */
 void pinXMode(uint8_t pin, bool mode) {
+	if(pin <= 0) return;
 
-  if(pin <= 0 || pin > digitalx_pinsmax)
-    return;
+	pinMode(pin, OUTPUT);
 
-  pinMode(pin, OUTPUT);
+	if(pin > digitalx_pinsmax) return;
 
-  digitalx_mode[ digitalx_mapping_in[pin-1] ] = mode;
+	pin = digitalx_mapping_in[pin];
+	if(pin != -1) digitalx_mode[ pin ] = mode;
 }
+
+void digital_analog_useall() {
+	for(int i=0; i<digitalx_pins; i++) {
+		pinXMode((uint8_t)digitalx_mapping[i], true);
+	}
+}
+
 /*
 from a voltaje, with max_voltaje specified in setup
 */
 void analogXWrite(uint8_t pin, uint8_t v) {
-  if(pin <= 0 || pin > digitalx_pinsmax ||
-    v < 0 || v > digitalx_vmax)
-    return;
+	int pin_in;
+	if(pin <= 0 || v < 0 || v > digitalx_vmax)	return;
 
-  pin = digitalx_mapping_in[pin-1];
+	// Serial.println("analogXWrite("+String(pin)+", "+String(v)+") ");
+	if(pin > digitalx_pinsmax) {
+		analogWrite(pin, v);
+		return;
+	}
+	pin_in = digitalx_mapping_in[pin];
 
+	if(pin_in == -1) {
+		analogWrite(pin, v);
+		return;
+	}
 
-  digitalx_t_left[pin] = digitalx_td[pin] = (unsigned long)
+  digitalx_t_left[pin_in] = digitalx_td[pin_in] = (unsigned long)
     ( ((float)v/(float)digitalx_vmax)*(float)digitalx_pwm_width );
 
-  Serial.println("Configuring analog "+String(pin)+
-    " tl "+String(digitalx_t_left[pin]));
+  // Serial.println("Configuring analog "+String(pin_in)+
+  //   " tl "+String(digitalx_t_left[pin_in]));
 }

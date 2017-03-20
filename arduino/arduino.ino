@@ -11,6 +11,7 @@
 #include "digitalx.h"
 #include "threader.h"
 #include "vektor_mat.h"
+// #include "vektor_motors.h"
 /**
   For adafruit magsensor:
   http://www.adafruit.com/products/1746
@@ -56,18 +57,18 @@ float mag_vx[3] = {cos(M_PI/4), cos(M_PI/4), 0};
 float mag_vy[3] = {-cos(M_PI/4), cos(M_PI/4), 0};
 float mag_vz[3] = {0,0, 1};
 //number of engines, equally distributed in circle
-int engines_num=4;
+int engines_num;
 //angle of the first engine relative to global coordinates, or just
 //your geolocal phase relative to north pole
 float engines_ang_offset=-M_PI/2;
 //width of vibration wave, it will be linearly interpolated later
-float engines_ang_width = (M_PI*0.75f)/2.0f;
+float engines_ang_width = M_PI*0.35f;
 //////////////////////////////////////////////////////////////////////
 
 //engines step, calculated angle space between engines
 float engines_ang_step;
 int * engines;  //voltaje from 0 to 255 for each engine
-int engines_map[4];  //a mapping: engines_map[engine] = pin (see engines_apply)
+int * engines_map;  //a mapping: engines_map[engine] = pin (see engines_apply)
 float engines_transform[9];  //coordinates transformation matrix
 
 //those temporary vector and matrix data, let you optimize calculation
@@ -76,22 +77,22 @@ float engines_transform[9];  //coordinates transformation matrix
 float tmp_mag_dir[3];
 float tmp_v0[3];
 float tmp_v1[3];
+
 /**
 @desc setups engines data structures and variables
 @param  engines_mapping the mapping from engines to pins:
     {engine_0_pin, engine_1_pin[, ..]}
 */
-void engines_setup(int engines_mapping[4]) {
-  engines = new int[engines_num];
-  engines_map[0] = engines_mapping[0];
-  engines_map[1] = engines_mapping[1];
-  engines_map[2] = engines_mapping[2];
-  engines_map[3] = engines_mapping[3];
+void engines_setup(int* engines_mapping, int eng_num) {
+	engines_num = eng_num;
+	engines_map = engines_mapping;
 
-  //Serial.println( "Starting!:"+engines_mapping[0] );
+	engines = new int[eng_num];
+	for(int i = 0;i<eng_num;i++)
+		engines[i] = 0;
 
-  create_transform(engines_transform, mag_vx, mag_vy, mag_vz);
-  engines_ang_step = 2*M_PI/engines_num;
+	create_transform(engines_transform, mag_vx, mag_vy, mag_vz);
+	engines_ang_step = 2*M_PI/engines_num;
 }
 
 /**
@@ -100,8 +101,9 @@ void engines_setup(int engines_mapping[4]) {
 */
 void engines_apply() {
   for(int i =0; i < engines_num; i++)
-    analogWrite( engines_map[i], engines[i] );
+    analogXWrite( engines_map[i], engines[i] );
 }
+
 /**
 This gets the magnetometter direction, transforms it to local cordinates
 using the engines_transformacion matrix created on engines_setup, and
@@ -126,9 +128,11 @@ void engines_update_direction() {
 
   for(int i=0; i < engines_num;i++) { //for each engine
     ang_eng = engines_ang_step*i + engines_ang_offset;  //get local engine angle
+
     //get engine distance from local magnetometer angle
-    ang_diff = min(min(fabs(ang_eng - ang_mag - M_PI*2), fabs(ang_eng - ang_mag) ),
-      fabs(ang_eng - ang_mag + M_PI*2)) ;
+    ang_diff = min(	min(fabs(ang_eng - ang_mag - M_PI*2),
+						fabs(ang_eng - ang_mag) ),
+		      		fabs(ang_eng - ang_mag + M_PI*2));
 
 
     if(ang_diff > engines_ang_width)  //if engine angle scapes vibration width
@@ -161,58 +165,81 @@ void displaySensorDetails(void) {
   delay(500);
 }
 
-/*
-unsigned long count = 0;
-bool level = true;
-void print(unsigned long dt) {
-  Serial.println("-----------------------------------------runing thread");
-  Serial.println(count);
-  level = !level;
-  analogWrite(5, (level)?255:10);
-  analogXWrite(8, (level)?255:10);
-  analogXUpdate(dt, true);
+void engines_print() {
+	int motor;
+	for(motor=0; motor<engines_num; motor++) {
+		Serial.print(String(motor)+":"+String(engines_map[motor])+", "+
+			String(engines[motor])+",   ");
+	}
+	Serial.println();
+}
+void mag_print() {
+	sensors_event_t event;
+	mag.getEvent(&event);
 
+	Serial.println("Mag direction x, y, z");
+	Serial.print(
+		"x: "+String(event.magnetic.x)+
+		", y: "+String(event.magnetic.y)+
+		", z: "+String(0));
+	Serial.println();
 }
-void update_data(unsigned long dt) {
-  analogXUpdate(dt, false);
-  count++;
+
+void thread_update_digitalx(unsigned long dt) {
+	analogXUpdate(dt, false);
 }
-*/
+void thread_update_digitalx_info(unsigned long dt) {
+	analogXUpdate(dt, true);
+}
+
+void thread_update_engines(unsigned long dt) {
+	engines_update_direction();
+}
+
+void thread_update_info(unsigned long dt) {
+	// engines_print();
+	// mag_print();
+	analogXPrint(false, false);
+}
 
 void setup(void) {
-  int mapping[4] = {3,9,6,5};
-  engines_setup(mapping);
 
-  Serial.begin(9600);
+	Serial.begin(9600);
+	Serial.println("HMC5883 Magnetometer Test"); Serial.println("");
 
-  Serial.println("HMC5883 Magnetometer Test"); Serial.println("");
+	/* Initialise the sensor */
+	if (!mag.begin()) {
+		/* There was a problem detecting the HMC5883 ... check your connections */
+		Serial.println("Ooops, no HMC5883 detected ... Check your wiring!");
+		while (1);
+	}
+	/* Display some basic information on this sensor */
+	displaySensorDetails();
 
-  /* Initialise the sensor */
-  if (!mag.begin()) {
-    /* There was a problem detecting the HMC5883 ... check your connections */
-    Serial.println("Ooops, no HMC5883 detected ... Check your wiring!");
-    while (1);
-  }
-  /* Display some basic information on this sensor */
-  displaySensorDetails();
 
-  digital_analog_setup();
-  /*
-  pinXMode(8, true);
-  analogXWrite(8, 50);
+	engines_setup( new int[8]{2, 3, 4, 5, 6, 7, 8, 9}, 8);
+	Serial.println("Sensor and engines setup complete");
+	Serial.println("---------------------------------");
+	Serial.println("Engines mapping:");
+	engines_print();
 
-  pinMode(5, OUTPUT);
-  analogWrite(5, 255);
-  */
+	/**
+	DigitalX pin config, for using PWM in analog pins,
+	currently on development
+	*/
+	digital_analog_setup();
+	digital_analog_useall();
+	analogXPrint(false, false);
 
-  // register_thread(update_data, 0);
-  //register_thread(print, 1000000);
+	register_thread(thread_update_engines, (unsigned long)10*(unsigned long)1000);
+	register_thread(thread_update_digitalx, 10);
+	// register_thread(thread_update_digitalx_info, (unsigned long)1000*(unsigned long)1000);
+	// register_thread(thread_update_info, (unsigned long)1000*(unsigned long)1000);
+
 }
 
 
 void loop(void) {
-  //engines_update_direction();
   thread_manager();
-
   delayMicroseconds(0);
 }
