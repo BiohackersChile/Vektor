@@ -7,9 +7,9 @@
 #include "lib/Adafruit_HMC5883_U/Adafruit_HMC5883_U.h"
 
 //local sketch extra code
-#include "digitalx.h"
-#include "threader.h"
-#include "vektor_mat.h"
+#include "lib/DigitalX/DigitalX.h"
+#include "lib/Threader/Threader.h"
+#include "lib/vektor_mat/vektor_mat.h"
 // #include "vektor_motors.h"
 /**
   For adafruit magsensor:

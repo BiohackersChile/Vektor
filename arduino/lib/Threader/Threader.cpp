@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "threader.h"
+#include "Threader.h"
 
 /*
 holds delay data, along with the function (thead) object
