@@ -3,9 +3,8 @@
 #include <limits.h>
 #include <Wire.h>
 
-//if you use arduino ide, take those into your libraries folder
-#include <Adafruit_Sensor.h>
-#include <Adafruit_HMC5883_U.h>
+#include "lib/Adafruit_Sensor/Adafruit_Sensor.h"
+#include "lib/Adafruit_HMC5883_U/Adafruit_HMC5883_U.h"
 
 //local sketch extra code
 #include "digitalx.h"
